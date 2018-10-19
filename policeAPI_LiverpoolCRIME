@@ -1,0 +1,1274 @@
+---
+title: "Mapping the 2016 Liverpool crime scene"
+subtitle: "ENVS456 Assignment 1"
+author: "201307119"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r eval=FALSE, echo=FALSE, message=FALSE, warning=FALSE, results = 'hide'}
+# Instal packadges
+install.packages("spatialEco")
+install.packages("leaflet.extras")
+install.packages("plotly")
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results = 'hide'}
+# Load packages
+library("rgdal")
+library("sp")
+library("classInt")
+library("RColorBrewer")
+library("plyr")
+library("spatialEco")
+library("leaflet")
+library("leaflet.extras")
+library("plotly")
+library("ggplot2")
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results = 'hide'}
+# load files
+crime <- readOGR(dsn = "F:/api", layer = "c2016", stringsAsFactors = FALSE)
+LSOA <- readOGR(dsn = "F:/GDS6/liv-imd/E08000012/shapefiles", layer = "E08000012", stringsAsFactors = FALSE)
+c_all <- readOGR(dsn = "F:/api", layer = "c_all", stringsAsFactors = FALSE)
+c_time <- read.csv(file="F:/api/c_time.csv", header = TRUE, sep = "," , stringsAsFactors = FALSE)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results = 'hide'}
+# sorting out the coordinates
+longlat = "+init=epsg:4326"
+
+LSOA = spTransform(LSOA, CRS=longlat)
+crime = spTransform(crime, CRS=longlat)
+c_all = spTransform(c_all, CRS=longlat)
+
+LSOA <- LSOA[c("LSOA11CD")]
+```
+
+
+Introduction
+This paper aims to examine the crime scene of Liverpool in 2016 and visualize the result with new geographic methods, including programing in R Studio.
+Background
+Liverpool city with population of just under half a million, is one of the largest metropolis in the UK and it is one of the most deprived areas in United Kingdom (Belger, 2015). The national news also points out there is also a relatively high crime rate. The situation is extensively described by both the UK Police and national or independent statistical offices. The sources point out that anti-social behaviour and a violence are the two most common crime types. Both of them are quite broad terms, anti-social behaviour can include anything from vandalism, public drinking and drug buying to uncontrolled pets and off-road riding (Veirsure, Smart Alarms, 2018). In comparison violence involves a second person, it includes offences against the person such as common assaults, grievous bodily harm and sexual offences (Police UK, 2018). However, looking at the news, the articles mostly highlight crimes which include use of gun, burglary or drug use. 
+The sources also point out a big difference between crimes in 2015 accounting for 54 624 crimes and 2016 accounting for 69 285 crimes, which can cause a discussion whether it is an effect of the Brexit election in late June or not.
+
+#Methodology
+
+The analysis was conducted in R studio and additionally in CartoDB application, the code used in R studio is attached in the appendix of this paper. 
+For the analysis, 2 different data sets were used. The crime information was retrieved in the form of API protocols from data.police.uk. The API call address contains the date, month by which are the data originally saved, and manually defined polygon, consisting of coordinates of each vertex of the polygon into which the crimes fall in. 
+
+  
+### Figure 1: API call address
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# Api crime example
+c1 <- jsonlite::fromJSON(txt="https://data.police.uk/api/crimes-street/all-crime?poly=53.318868,-2.769418:53.332300,-2.927342:53.447046,-3.048783:53.503812,-2.961702:53.443678,-2.788162&date=2016-01")
+```
+
+Advantage of this data is no authorisation, characteristic description of each crime location and up to date datasets. To show the distribution of crimes on a city scale Lower Layer Super Output Areas (LSOA) were used. Spatial LSOA polygons were retrieved from the Consumer Data Research Centre (CDRC). They were attached to crimes by assigning name of row ID. The visualizations then use frequencies of crimes in each month/category in LSOA’s. Each crime reported was aggregated to the LSOA level by a spatial overlay and keeping the columns of crime category, month and name of each LSOA the crime points were aggregated to.
+
+### Figure 2: Head of crime database
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+head(crime@data)
+```
+
+There was  3 methods used  for visualisation; graph created with plotly, map created with leaflet and map conducted in cartoDB.
+1.	Graph showing each crime type for each month in 2016 was created with plotly package. Advantage of this package is in interactivity and intuitive recognition of the data. It allows the user to see values by hoovering over the graph line and pick one or more desired graph lines to compare each data category or even pick parts of the graphs to see particular element in context. Data was extracted from created database as frequencies of crimes for each month and crime category. 
+2.	For the map of the crime distribution in Liverpool the leaflet and leaflet.extras packages were used, which allows an interactive map to be made. The map’s major elements are twelve layers of the crime distribution for each month, plus layers of crime distribution for the whole year. It was possible to put the layers into a same map thanks to Layer Controls option of leaflet and a quantiles classification scheme was used. The Map has ‘hoover-over’ labels containing frequencies for the two most common and two literature suggested crimes. Crime frequencies for the map and its popups were retrieved separately from the database. With a chosen white map tiles, CartoDB.Positron, there was manually chosen yellow-red colour palette by ColorBrewer, which complements the crime theme.
+3.	Additionally, the map was created in CartoDB, one of the new mapping platforms that combines easy data visualisation with possible use of programming in different languages. The map uses the crime database created with R studio and shows all crime points and clusters of high crime frequency surrounded by high crime frequency (HH), conducted by LISA analysis. For this purpose  (in a CartoDB) the data was sampled into 0.01% of the original amount, then applied LISA and only the points categorised as HH was selected. Those were then divided into six clusters which centroids were created for. The map was completed with an interactive graph of crime count for each map and interactive labels.
+
+# Result
+
+Figure 3 shows, how each crime changes over a time. From the first sight it clearly shows that anti-social behaviour and a violent crimes are the most frequent type, as the sources suggested. Anti-social behaviour stands for 32% and violent crimes stands for 19% of all the committed crimes in 2016. The lowest frequency then has Possession of weapons with 0.05% and Robbery with 0.09% of all the crimes, exact values can be examined from the graph. Comparing the time series, some of the crimes, such as weapon possession or shoplifting, does not really show any patterns, but most of the crime types has peaks in autumn, more surprisingly, most of the peaks are situated in October. The explanation might be found in media and police crime reports. The Police reports describe the regular increase in crimes in Halloween celebration and after Halloween period, which is also connected to Bonfire Night celebration (Metropolitan Police, 2016) (Merseyside Police, 2017). 
+
+### Figure 3: Plotly graph
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# plotly
+# difine axes
+y <-x <- list(
+  title = "Crime type") 
+x <-x <- list(
+  title = "") 
+
+# making a graph 
+p <- plot_ly(c_time, x = ~month) %>%
+  add_lines(y = ~anti.social.behaviour, name = "Anti social behaviour", line = list(shape = "linear")) %>%
+  add_lines(y = ~violent.crime, name = "Violent crime", line = list(shape = "linear")) %>%
+  add_lines(y = ~criminal.damage.arson, name = "Criminal damage arson", line = list(shape = "linear")) %>%
+  add_lines(y = ~burglary, name = "Burglary", line = list(shape = "linear")) %>%
+  add_lines(y = ~other.theft, name = "Other theft", line = list(shape = "linear"))%>%
+  add_lines(y = ~vehicle.crime, name = "Vehicle crime", line = list(shape = "linear")) %>%
+  add_lines(y = ~shoplifting, name = "Shoplifting", line = list(shape = "linear")) %>%
+  add_lines(y = ~drugs, name = "Drugs", line = list(shape = "linear")) %>%
+  add_lines(y = ~public.order, name = "Public order", line = list(shape = "linear")) %>%
+  add_lines(y = ~theft.from.the.person, name = "Theft from the person", line = list(shape = "linear")) %>%
+  add_lines(y = ~bicycle.theft, name = "Bicycle theft", line = list(shape = "linear")) %>%
+  add_lines(y = ~other.crime, name = "Other crime", line = list(shape = "linear")) %>%
+  add_lines(y = ~robbery, name = "Robbery", line = list(shape = "linear")) %>%
+  add_lines(y = ~possession.of.weapons, name = "Possession of weapons", line = list(shape = "linear")) %>% 
+  layout(title = "Crimes during 2016", yaxis=y, xaxis=x)
+p
+
+```
+
+The following map, done by leaflet, then describes the spread of the committed crimes throughout the LSOA districts in each month. Different patterns can be found for each month, but there are also certainly visible similarities. As the main point is the remaining pattern of high crime frequency in North Liverpool, which is are known for high deprivation and where the sport stadium is located, in the centre of Liverpool, where most of the entertainment and shopping areas take a place, and in the south, in surrounding of Liverpool Airport. Nevertheless, when  you ‘hoover-over’ the map, exact numbers of the selected crime types can be seen, which reveals a big difference between the Liverpool centre and the other high crime areas. The area surrounding  Bond Street and Chinatown accounts for around 6 to 7 hundred crimes committed a year each, while the areas out of the centre accounts for around 3 to 4 hundred crimes committed. What’s more interesting, the LSOA including Hannover Street is holding exceptionally high number of all crime types. It might be connected to the fact that the highest numbers of reported crimes are allocated near the police stations and the main Liverpool police station is on Hannover Street.
+
+###Figure 4: Map of the crime made in leaflet
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results = 'hide'}
+# function for labs
+lab <- function(df, date=list("2016-01", "2016-02","2016-03", "2016-04", "2016-05", "2016-06", "2016-07", "2016-08", "2016-09", "2016-10", "2016-11", "2016-12")) {
+g <- data.frame(table(crime@data$category == "anti-social-behaviour", crime@data$LSOA, crime@data$month==date, exclude = FALSE))
+gh <- aggregate(Freq~Var2, data=g, sum)
+names(gh) <- c("LSOA", "anti_social_behaviour")
+k <- data.frame(table(crime@data$category == "violent-crime", crime@data$LSOA, crime@data$month==date, exclude = FALSE))
+kh <- aggregate(Freq~Var2, data=k, sum)
+names(kh) <- c("LSOA", "violent_crime")
+l <- data.frame(table(crime@data$category == "burglary", crime@data$LSOA, crime@data$month==date, exclude = FALSE))
+lh <- aggregate(Freq~Var2, data=l, sum)
+names(lh) <- c("LSOA", "burglary")
+o <- data.frame(table(crime@data$category == "drugs", crime@data$LSOA, crime@data$month==date, exclude = FALSE))
+oh <- aggregate(Freq~Var2, data=o, sum)
+names(oh) <- c("LSOA", "drugs")
+p <- data.frame(table(crime@data$category == "possession-of-weapons", crime@data$LSOA, crime@data$month==date, exclude = FALSE))
+ph <- aggregate(Freq~Var2, data=p, sum)
+names(ph) <- c("LSOA", "possession_of_weapons")
+labi <- cbind(gh,kh,lh,oh,ph, by="LSOA", stringAsFactor=FALSE)
+labi <- labi[c(1,2,4,6,8,10)]
+return(labi)
+}
+
+
+labjan <- lab( date=("2016-01"))
+labfeb <- lab( date=("2016-02"))
+labmar <- lab( date=("2016-03"))
+labapr <- lab( date=("2016-04"))
+labmay <- lab( date=("2016-05"))
+labjun <- lab( date=("2016-06"))
+labjul <- lab( date=("2016-07"))
+labaug <- lab( date=("2016-08"))
+labsep <- lab( date=("2016-09"))
+laboct <- lab( date=("2016-10"))
+labnov <- lab( date=("2016-11"))
+labdec <- lab( date=("2016-12"))
+
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results = 'hide'}
+# define labels in popouts
+popjan <- sprintf(
+  "<strong>%s</strong><br/>%g antisocial behaviour crimes<br/>%g violent crimes</br>%g burglaries</br>%g drug crimes</br>%g possesion of weapons",
+  "Number of crimes", labjan$anti_social_behaviour, labjan$violent_crime, labjan$burglary, labjan$drugs, labjan$possession_of_weapons
+) %>% lapply(htmltools::HTML)
+
+# define labels
+popfeb <- sprintf(
+  "<strong>%s</strong><br/>%g antisocial behaviour crimes<br/>%g violent crimes</br>%g burglaries</br>%g drug crimes</br>%g possesion of weapons",
+  "Number of crimes", labfeb$anti_social_behaviour, labfeb$violent_crime, labfeb$burglary, labfeb$drugs, labfeb$possession_of_weapons
+) %>% lapply(htmltools::HTML)
+
+# define labels
+popmar <- sprintf(
+  "<strong>%s</strong><br/>%g antisocial behaviour crimes<br/>%g violent crimes</br>%g burglaries</br>%g drug crimes</br>%g possesion of weapons",
+  "Number of crimes", labmar$anti_social_behaviour, labmar$violent_crime, labmar$burglary, labmar$drugs, labmar$possession_of_weapons
+) %>% lapply(htmltools::HTML)
+
+# define labels
+popapr <- sprintf(
+  "<strong>%s</strong><br/>%g antisocial behaviour crimes<br/>%g violent crimes</br>%g burglaries</br>%g drug crimes</br>%g possesion of weapons",
+  "Number of crimes", labapr$anti_social_behaviour, labapr$violent_crime, labapr$burglary, labapr$drugs, labapr$possession_of_weapons
+) %>% lapply(htmltools::HTML)
+
+# define labels
+popmay <- sprintf(
+  "<strong>%s</strong><br/>%g antisocial behaviour crimes<br/>%g violent crimes</br>%g burglaries</br>%g drug crimes</br>%g possesion of weapons",
+  "Number of crimes", labmay$anti_social_behaviour, labmay$violent_crime, labmay$burglary, labmay$drugs, labmay$possession_of_weapons
+) %>% lapply(htmltools::HTML)
+
+# define labels
+popjun <- sprintf(
+  "<strong>%s</strong><br/>%g antisocial behaviour crimes<br/>%g violent crimes</br>%g burglaries</br>%g drug crimes</br>%g possesion of weapons",
+  "Number of crimes", labjun$anti_social_behaviour, labjun$violent_crime, labjun$burglary, labjun$drugs, labjun$possession_of_weapons
+) %>% lapply(htmltools::HTML)
+
+# define labels
+popjul <- sprintf(
+  "<strong>%s</strong><br/>%g antisocial behaviour crimes<br/>%g violent crimes</br>%g burglaries</br>%g drug crimes</br>%g possesion of weapons",
+  "Number of crimes", labjul$anti_social_behaviour, labjul$violent_crime, labjul$burglary, labjul$drugs, labjul$possession_of_weapons
+) %>% lapply(htmltools::HTML)
+
+# define labels
+popaug <- sprintf(
+  "<strong>%s</strong><br/>%g antisocial behaviour crimes<br/>%g violent crimes</br>%g burglaries</br>%g drug crimes</br>%g possesion of weapons",
+  "Number of crimes", labaug$anti_social_behaviour, labaug$violent_crime, labaug$burglary, labaug$drugs, labaug$possession_of_weapons
+) %>% lapply(htmltools::HTML)
+
+# define labels
+popsep <- sprintf(
+  "<strong>%s</strong><br/>%g antisocial behaviour crimes<br/>%g violent crimes</br>%g burglaries</br>%g drug crimes</br>%g possesion of weapons",
+  "Number of crimes", labsep$anti_social_behaviour, labsep$violent_crime, labsep$burglary, labsep$drugs, labsep$possession_of_weapons
+) %>% lapply(htmltools::HTML)
+
+# define labels
+popoct <- sprintf(
+  "<strong>%s</strong><br/>%g antisocial behaviour crimes<br/>%g violent crimes</br>%g burglaries</br>%g drug crimes</br>%g possesion of weapons",
+  "Number of crimes", laboct$anti_social_behaviour, laboct$violent_crime, laboct$burglary, laboct$drugs, laboct$possession_of_weapons
+) %>% lapply(htmltools::HTML)
+
+# define labels
+popnov <- sprintf(
+  "<strong>%s</strong><br/>%g antisocial behaviour crimes<br/>%g violent crimes</br>%g burglaries</br>%g drug crimes</br>%g possesion of weapons",
+  "Number of crimes", labnov$anti_social_behaviour, labnov$violent_crime, labnov$burglary, labnov$drugs, labnov$possession_of_weapons
+) %>% lapply(htmltools::HTML)
+
+# define labels
+popdec <- sprintf(
+  "<strong>%s</strong><br/>%g antisocial behaviour crimes<br/>%g violent crimes</br>%g burglaries</br>%g drug crimes</br>%g possesion of weapons",
+  "Number of crimes", labdec$anti_social_behaviour, labdec$violent_crime, labdec$burglary, labdec$drugs, labdec$possession_of_weapons
+) %>% lapply(htmltools::HTML)
+
+x <- data.frame(table(crime@data$LSOA))
+# define labels
+popall <- sprintf(
+  "<strong>%s</strong><br/>%g",
+  "Sum of crimes", x$Freq
+) %>% lapply(htmltools::HTML)
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results = 'hide'}
+# C_all t numeric
+c_all@data$January <- as.numeric(c_all@data$January)
+c_all@data$February <- as.numeric(c_all@data$February)
+c_all@data$March <- as.numeric(c_all@data$March)
+c_all@data$April <- as.numeric(c_all@data$April)
+c_all@data$May <- as.numeric(c_all@data$May)
+c_all@data$June <- as.numeric(c_all@data$January)
+c_all@data$Jujy <- as.numeric(c_all@data$Jujy)
+c_all@data$August <- as.numeric(c_all@data$August)
+c_all@data$September <- as.numeric(c_all@data$September)
+c_all@data$October <- as.numeric(c_all@data$October)
+c_all@data$November <- as.numeric(c_all@data$November)
+c_all@data$December <- as.numeric(c_all@data$December)
+c_all@data$ALL <- as.numeric(c_all@data$ALL)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# colors
+col <- c('#ffffb2','#fecc5c','#fd8d3c','#f03b20','#bd0026')
+pal1 <- colorQuantile(col, c_all$January, n=5)
+pal2 <- colorQuantile(col, c_all$February, n=5)
+pal3 <- colorQuantile(col, c_all$March, n=5)
+pal4 <- colorQuantile(col, c_all$April, n=5)
+pal5 <- colorQuantile(col, c_all$May, n=5)
+pal6 <- colorQuantile(col, c_all$June, n=5)
+pal7 <- colorQuantile(col, c_all$Jujy, n=5)
+pal8 <- colorQuantile(col, c_all$August, n=5)
+pal9 <- colorQuantile(col, c_all$September, n=5)
+pal10 <- colorQuantile(col, c_all$October, n=5)
+pal11 <- colorQuantile(col, c_all$November, n=5)
+pal12 <- colorQuantile(col, c_all$December, n=5)
+pal13 <- colorQuantile(col, c_all$ALL, n=5)
+
+# Map
+m <- leaflet() %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%  
+  setView(-2.959761, 53.404049, 11)%>%
+ 
+   addPolygons(data=c_all, fillColor = ~pal1(c_all$January),
+              weight = 0, 
+              opacity = 0.3, 
+              color = "white",
+              dashArray = "0.1",
+              fillOpacity = 0.7,
+              group="January",
+              highlight = highlightOptions( 
+                weight = 0.2,
+                color = "#666",
+                dashArray = "",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+  label = popjan,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto")) %>%
+ 
+   addPolygons(data=c_all, fillColor = ~pal2(c_all$February),
+              weight = 0, 
+              opacity = 0.3, 
+              color = "white",
+              dashArray = "0.1",
+              fillOpacity = 0.7,
+              group="February",
+              highlight = highlightOptions( 
+                weight = 0.2,
+                color = "#666",
+                dashArray = "",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+  label = popfeb,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))%>%
+ 
+   addPolygons(data=c_all, fillColor = ~pal3(c_all$March),
+              weight = 0, 
+              opacity = 0.3, 
+              color = "white",
+              dashArray = "0.1",
+              fillOpacity = 0.7,
+              group="March",
+              highlight = highlightOptions( 
+                weight = 0.2,
+                color = "#666",
+                dashArray = "",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+  label = popmar,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))%>%
+ 
+   addPolygons(data=c_all, fillColor = ~pal4(c_all$April),
+              weight = 0, 
+              opacity = 0.3, 
+              color = "white",
+              dashArray = "0.1",
+              fillOpacity = 0.7,
+              group="April",
+              highlight = highlightOptions( 
+                weight = 0.2,
+                color = "#666",
+                dashArray = "",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+  label = popapr,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))%>%
+ 
+   addPolygons(data=c_all, fillColor = ~pal5(c_all$May),
+              weight = 0, 
+              opacity = 0.3, 
+              color = "white",
+              dashArray = "0.1",
+              fillOpacity = 0.7,
+              group="May",
+              highlight = highlightOptions( 
+                weight = 0.2,
+                color = "#666",
+                dashArray = "",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+  label = popmay,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))%>%
+  
+  addPolygons(data=c_all, fillColor = ~pal6(c_all$June),
+              weight = 0, 
+              opacity = 0.3, 
+              color = "white",
+              dashArray = "0.1",
+              fillOpacity = 0.7,
+              group="June",
+              highlight = highlightOptions( 
+                weight = 0.2,
+                color = "#666",
+                dashArray = "",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+  label = popjun,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))%>%
+ 
+   addPolygons(data=c_all, fillColor = ~pal7(c_all$Jujy),
+              weight = 0, 
+              opacity = 0.3, 
+              color = "white",
+              dashArray = "0.1",
+              fillOpacity = 0.7,
+              group="July",
+              highlight = highlightOptions( 
+                weight = 0.2,
+                color = "#666",
+                dashArray = "",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+  label = popjul,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))%>%
+ 
+   addPolygons(data=c_all, fillColor = ~pal8(c_all$August),
+              weight = 0, 
+              opacity = 0.3, 
+              color = "white",
+              dashArray = "0.1",
+              fillOpacity = 0.7,
+              group="August",
+              highlight = highlightOptions( 
+                weight = 0.2,
+                color = "#666",
+                dashArray = "",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+  label = popaug,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))%>%
+
+    addPolygons(data=c_all, fillColor = ~pal9(c_all$September),
+              weight = 0, 
+              opacity = 0.3, 
+              color = "white",
+              dashArray = "0.1",
+              fillOpacity = 0.7,
+              group="September",
+              highlight = highlightOptions( 
+                weight = 0.2,
+                color = "#666",
+                dashArray = "",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+  label = popsep,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))%>%
+ 
+   addPolygons(data=c_all, fillColor = ~pal10(c_all$October),
+              weight = 0, 
+              opacity = 0.3, 
+              color = "white",
+              dashArray = "0.1",
+              fillOpacity = 0.7,
+              group="October",
+              highlight = highlightOptions( 
+                weight = 0.2,
+                color = "#666",
+                dashArray = "",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+  label = popoct,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))%>%
+ 
+   addPolygons(data=c_all, fillColor = ~pal11(c_all$November),
+              weight = 0, 
+              opacity = 0.3, 
+              color = "white",
+              dashArray = "0.1",
+              fillOpacity = 0.7,
+              group="November",
+              highlight = highlightOptions( 
+                weight = 0.2,
+                color = "#666",
+                dashArray = "",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+  label = popnov,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))%>%
+  
+  addPolygons(data=c_all, fillColor = ~pal12(c_all$December),
+              weight = 0, 
+              opacity = 0.3, 
+              color = "white",
+              dashArray = "0.1",
+              fillOpacity = 0.7,
+              group="December",
+              highlight = highlightOptions( 
+                weight = 0.2,
+                color = "#666",
+                dashArray = "",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+  label = popdec,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))%>%
+ 
+   addPolygons(data=c_all, fillColor = ~pal13(c_all$ALL),
+              weight = 0, 
+              opacity = 0.3, 
+              color = "white",
+              dashArray = "0.1",
+              fillOpacity = 0.7,
+              group="Whole year",
+              highlight = highlightOptions( 
+                weight = 0.2,
+                color = "#666",
+                dashArray = "",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+  label = popall,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))%>%
+  
+  addScaleBar(position = 'bottomright',
+              options = scaleBarOptions(metric = TRUE))%>%
+  
+  addLegend(position = 'bottomleft', pal = pal1, values = c_all$January, title = "Quantiles of crime counts")%>%
+  
+  addFullscreenControl( position = "topleft")%>%
+
+  addLayersControl(
+    baseGroups = c("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December", "Whole year" ),
+    options = layersControlOptions(collapsed = FALSE))
+m
+```
+
+Additionally, the hyperlink below refers to the map created with CartoDB platform, which shows high density crime coverage of Liverpool and a graph of the amount of crimes in each month; the main feature is red colour clusters of High-High crime frequencies. The six clusters point out six locations of ‘Dangerous places’ in Liverpool, in lead with the Liverpool centre, Walton, Speak, following with Wavetree, West Derby and Allerton. 
+
+### Figure 5: Carto DB map
+
+https://gdsl.carto.com/u/hasova-envs456/builder/f88457ed-c30b-4fb1-a1a8-3b9f551f9a85/embed?state=%7B%22map%22%3A%7B%22ne%22%3A%5B53.312416295607065%2C-3.1929016113281254%5D%2C%22sw%22%3A%5B53.50397589797847%2C-2.80975341796875%5D%2C%22center%22%3A%5B53.40830392510623%2C-3.001327514648438%5D%2C%22zoom%22%3A11%7D%7D
+
+In conclusion, the maps shows how the crime scene changes within the city, where the high crime connected to high day-time population density, and within the year, where the most crimes are committed during autumn holiday celebration. However further research and application of statistical and spatial modeling methods could reveal hidden patterns and prove or disprove the visible ones.
+Discussion
+The primal issue arise with the definition of a crime location. Due to privacy and possible data abuse, the crime locations are fixed on a street level and doesn’t reveal the exact house or position. That could cause an inaccuracy when analysing the pattern on a small scale and may influence the result of spatial analysis. 
+Another limitation is connected to the leaflet visualization. Figure…map shows the legend in the form of quantiles which are applied on each layer and works for all. The reason for that is the incapability to apply layer controls or any kind of slide bars that would change along with the map layers. Solution would be to make a maps with Shiny application, which has a wide options of scale bars and 
+CartoDB seems to be very helpful in many ways, although it’s still under the development. Colour series can be changed in a graph but graph type cant be changed for categorical data. Build in analyses are limited to certain extent, so that are cluster analyses. Disadvantage of the clustering method in CartoDB is the necessity of definition, how many clusters are going to be an output. In further investigation analysis could be applied differently, much more convenience clustering methods, such as K-means or Density-based spatial clustering of applications with noise (DBSCAN).
+
+
+# References
+
+Belger, T., 2015. Deprivation on Merseyside: Liverpool no longer the most deprived part of England. Liverpool Echo, 4 Oct.
+
+Gaines, S., 2008. Liverpool is England's most deprived district, government figures show. The Guardian, 30 Apr.
+
+Malm, S., 2012. Liverpool has five of the most deprived areas in the country as report claims England is one of most unequal countries in Western world. Mail Online, 22 May.
+
+Merseyside Police, 2017. Anti-social behaviour and criminal damage Merseyside. 31 Oct.
+
+Metropolitan Police, 2016. Met launches Autumn Nights ahead of Halloween and Bonfire Night. 21 Oct.
+
+Police UK, 2018. Detailed statistics for Liverpool Community Police Team - Hub Four. 
+
+Police UK, 2018. FAQs. 
+
+Veirsure, Smart Alarms, 2018. Liverpool Crime Statistics. 
+
+# Appendix
+```{r eval=FALSE, results='hide'}
+# Packages
+install.packages("spatialEco")
+install.packages("leaflet.extras")
+install.packages("plotly")
+
+library("rgdal")
+library("sp")
+library("classInt")
+library("RColorBrewer")
+library("plyr")
+library("spatialEco")
+library("leaflet")
+library("leaflet.extras")
+library("plotly")
+library("ggplot2")
+
+# Coordinates
+
+crime <- readOGR(dsn = "E:/api", layer = "c2016", stringsAsFactors = FALSE)
+LSOA <- readOGR(dsn = "E:/GDS6/liv-imd/E08000012/shapefiles", layer = "E08000012", stringsAsFactors = FALSE)
+c_all <- readOGR(dsn = "E:/api", layer = "c_all", stringsAsFactors = FALSE)
+c_time <- read.csv(file="E:/api/c_time.csv", header = TRUE, sep = "," , stringsAsFactors = FALSE)
+
+longlat = "+init=epsg:4326"
+
+LSOA = spTransform(LSOA, CRS=longlat)
+crime = spTransform(crime, CRS=longlat)
+c_all = spTransform(c_all, CRS=longlat)
+
+LSOA <- LSOA[c("LSOA11CD")]
+
+# Api crime
+
+c1 <- jsonlite::fromJSON(txt="https://data.police.uk/api/crimes-street/all-crime?poly=53.318868,-2.769418:53.332300,-2.927342:53.447046,-3.048783:53.503812,-2.961702:53.443678,-2.788162&date=2016-01")
+c2 <- jsonlite::fromJSON(txt="https://data.police.uk/api/crimes-street/all-crime?poly=53.318868,-2.769418:53.332300,-2.927342:53.447046,-3.048783:53.503812,-2.961702:53.443678,-2.788162&date=2016-02")
+c3 <- jsonlite::fromJSON(txt="https://data.police.uk/api/crimes-street/all-crime?poly=53.318868,-2.769418:53.332300,-2.927342:53.447046,-3.048783:53.503812,-2.961702:53.443678,-2.788162&date=2016-03")
+c4 <- jsonlite::fromJSON(txt="https://data.police.uk/api/crimes-street/all-crime?poly=53.318868,-2.769418:53.332300,-2.927342:53.447046,-3.048783:53.503812,-2.961702:53.443678,-2.788162&date=2016-04")
+c5 <- jsonlite::fromJSON(txt="https://data.police.uk/api/crimes-street/all-crime?poly=53.318868,-2.769418:53.332300,-2.927342:53.447046,-3.048783:53.503812,-2.961702:53.443678,-2.788162&date=2016-05")
+c6 <- jsonlite::fromJSON(txt="https://data.police.uk/api/crimes-street/all-crime?poly=53.318868,-2.769418:53.332300,-2.927342:53.447046,-3.048783:53.503812,-2.961702:53.443678,-2.788162&date=2016-06")
+c7 <- jsonlite::fromJSON(txt="https://data.police.uk/api/crimes-street/all-crime?poly=53.318868,-2.769418:53.332300,-2.927342:53.447046,-3.048783:53.503812,-2.961702:53.443678,-2.788162&date=2016-07")
+c8 <- jsonlite::fromJSON(txt="https://data.police.uk/api/crimes-street/all-crime?poly=53.318868,-2.769418:53.332300,-2.927342:53.447046,-3.048783:53.503812,-2.961702:53.443678,-2.788162&date=2016-08")
+c9 <- jsonlite::fromJSON(txt="https://data.police.uk/api/crimes-street/all-crime?poly=53.318868,-2.769418:53.332300,-2.927342:53.447046,-3.048783:53.503812,-2.961702:53.443678,-2.788162&date=2016-09")
+c10 <- jsonlite::fromJSON(txt="https://data.police.uk/api/crimes-street/all-crime?poly=53.318868,-2.769418:53.332300,-2.927342:53.447046,-3.048783:53.503812,-2.961702:53.443678,-2.788162&date=2016-10")
+c11 <- jsonlite::fromJSON(txt="https://data.police.uk/api/crimes-street/all-crime?poly=53.318868,-2.769418:53.332300,-2.927342:53.447046,-3.048783:53.503812,-2.961702:53.443678,-2.788162&date=2016-11")
+c12 <- jsonlite::fromJSON(txt="https://data.police.uk/api/crimes-street/all-crime?poly=53.318868,-2.769418:53.332300,-2.927342:53.447046,-3.048783:53.503812,-2.961702:53.443678,-2.788162&date=2016-12")
+
+list1 <- list(c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12)
+
+# Create Function for separating lng and lat
+
+num <- function(df){
+  df$lng <- as.numeric(df$location$longitude)
+  df$lat <- as.numeric(df$location$latitude)
+  df <- df[c("category", "lng", "lat", "month")]
+  coordinates(df) <- ~lng + lat
+  proj4string(df) <- CRS(longlat)
+  return(df)
+}
+
+## apply function to list
+list1 <- lapply(list1, num)
+
+## name each dataframe in list: to export to global environment
+names(list1) <- c("c11", "c22", "c33", "c44", "c55", "c66", "c77", "c88", "c99", "c1010", "c1111", "c1212")
+# export named list to global environment
+list2env(list1, .GlobalEnv)
+# all 2016
+c2016 <- rbind(c11, c22, c33, c44, c55, c66, c77, c88, c99, c1010, c1111, c1212)
+
+# LSOA to crimes
+
+## assigning LSOA code to each crime and omitting the ones, falling out of the Liverpool area
+LSOA1 <- LSOA[c("LSOA11CD")]
+LSOA1$LSOA <- LSOA1$LSOA11CD
+LSOA1$LSOA <- as.character(LSOA1$LSOA)
+head(LSOA1@data)
+ov <- over(c2016, LSOA1[,"LSOA11CD"])
+c2016$LSOA <- ov$LSOA11CD
+## Omit NA's
+c2016@data[!complete.cases(c2016@data),] 
+c2016 <- sp.na.omit(c2016)
+
+# Back up the big file
+
+crime16 <- c2016
+crime2016 <- c2016
+### writeOGR(c2016, dsn = "F:/api", layer = "c2016", driver="ESRI Shapefile")
+
+# Crime description
+
+## Show all the categories of crime and count for all year
+v <- as.factor(crime16$category)
+v <- factor(v)
+table(v)
+
+# Create df of crimes for each category each month for graph
+
+b <- data.frame(table(crime@data$category))
+
+e <- data.frame(table(crime@data$category == "anti-social-behaviour", crime@data$month, exclude = FALSE))
+names(e) <- c("Var1", "month", "anti-social-behaviour")
+e <- e[c(2,3)]
+
+f <- data.frame(table(crime@data$category == "bicycle-theft", crime@data$month, exclude = FALSE))
+names(f) <- c("Var1", "month", "bicycle-theft")
+f <- f[c(2,3)]
+
+g <- data.frame(table(crime@data$category == "burglary", crime@data$month, exclude = FALSE))
+names(g) <- c("Var1", "month", "burglary")
+g <- g[c(2,3)]
+
+h <- data.frame(table(crime@data$category == "criminal-damage-arson", crime@data$month, exclude = FALSE))
+names(h) <- c("Var1", "month", "criminal-damage-arson")
+h <- h[c(2,3)]
+
+i <- data.frame(table(crime@data$category == "drugs", crime@data$month, exclude = FALSE))
+names(i) <- c("Var1", "month", "drugs")
+i <- i[c(2,3)]
+
+j <- data.frame(table(crime@data$category == "other-crime", crime@data$month, exclude = FALSE))
+names(j) <- c("Var1", "month", "other-crime")
+j <- j[c(2,3)]
+
+k <- data.frame(table(crime@data$category == "other-theft", crime@data$month, exclude = FALSE))
+names(k) <- c("Var1", "month", "other-theft")
+k <- k[c(2,3)]
+
+l <- data.frame(table(crime@data$category == "possession-of-weapons", crime@data$month, exclude = FALSE))
+names(l) <- c("Var1", "month", "possession-of-weapons")
+l <- l[c(2,3)]
+
+m <- data.frame(table(crime@data$category == "public-order", crime@data$month, exclude = FALSE))
+names(m) <- c("Var1", "month", "public-order")
+m <- m[c(2,3)]
+
+n <- data.frame(table(crime@data$category == "robbery", crime@data$month, exclude = FALSE))
+names(n) <- c("Var1", "month", "robbery")
+n <- n[c(2,3)]
+
+o <- data.frame(table(crime@data$category == "shoplifting", crime@data$month, exclude = FALSE))
+names(o) <- c("Var1", "month", "shoplifting")
+o <- o[c(2,3)]
+
+p <- data.frame(table(crime@data$category == "theft-from-the-person", crime@data$month, exclude = FALSE))
+names(p) <- c("Var1", "month", "theft-from-the-person")
+p <- p[c(2,3)]
+
+q <- data.frame(table(crime@data$category == "vehicle-crime", crime@data$month, exclude = FALSE))
+names(q) <- c("Var1", "month", "vehicle-crime")
+q <- q[c(2,3)]
+
+r <- data.frame(table(crime@data$category == "violent-crime", crime@data$month, exclude = FALSE))
+names(r) <- c("Var1", "month", "violent-crime")
+r <- r[c(2,3)]
+
+c_time <- data.frame(table(crime@data$month))
+c_time <- c_time[c(1)]
+names(c_time) <- c("month")
+c_time <- cbind(e,f,g,h,i,j,k,l,m,n,o,p,q,r, by="month", stringAsFactor=FALSE)
+c_time <- c_time[c(1,2,4,6,8,10,12,14,16,18,20,22,24,26,28)]
+
+names(c_time)
+## change the names to get rid of --
+names(c_time) <- c("month", "Anti_social_behaviour", "Bicycle_theft", "Burglary", "Criminal_damage_arson", "Drugs", "Other_crime", "Other_theft", "Possession_of_weapons", "Public_order", "Robbery", "Shoplifting", "Theft_from_the_person", "Vehicle_crime", "Violent_crime")
+### write.csv(c_time, file="D:/api/c_time.csv", row.names = FALSE)
+
+# Plotly graph
+
+p <- plot_ly(c_time, x = ~month) %>%
+  add_lines(y = ~anti.social.behaviour, name = "Anti social behaviour", line = list(shape = "linear")) %>%
+  add_lines(y = ~violent.crime, name = "Violent crime", line = list(shape = "linear")) %>%
+  add_lines(y = ~criminal.damage.arson, name = "Criminal damage arson", line = list(shape = "linear")) %>%
+  add_lines(y = ~burglary, name = "Burglary", line = list(shape = "linear")) %>%
+  add_lines(y = ~other.theft, name = "Other theft", line = list(shape = "linear"))%>%
+  add_lines(y = ~vehicle.crime, name = "Vehicle crime", line = list(shape = "linear")) %>%
+  add_lines(y = ~shoplifting, name = "Shoplifting", line = list(shape = "linear")) %>%
+  add_lines(y = ~drugs, name = "Drugs", line = list(shape = "linear")) %>%
+  add_lines(y = ~public.order, name = "Public order", line = list(shape = "linear")) %>%
+  add_lines(y = ~theft.from.the.person, name = "Theft from the person", line = list(shape = "linear")) %>%
+  add_lines(y = ~bicycle.theft, name = "Bicycle theft", line = list(shape = "linear")) %>%
+  add_lines(y = ~other.crime, name = "Other crime", line = list(shape = "linear")) %>%
+  add_lines(y = ~robbery, name = "Robbery", line = list(shape = "linear")) %>%
+  add_lines(y = ~possession.of.weapons, name = "Possession of weapons", line = list(shape = "linear"))
+p
+
+# Crime for each month
+
+c_all <- LSOA
+  J <- data.frame(table(crime@data[which(crime$month =="2016-01"),]))
+  J$LSOA <- as.character(J$LSOA)
+  J <- J[c("LSOA", "Freq")]
+  J <-aggregate(J$Freq, by= list(category=J$LSOA), FUN=sum)
+  names(J) <- c("LSOA", "January")
+  c_all <- merge(c_all, J, by.x="LSOA11CD", by.y="LSOA")
+  
+  J <- data.frame(table(crime@data[which(crime$month =="2016-02"),]))
+  J$LSOA <- as.character(J$LSOA)
+  J <- J[c("LSOA", "Freq")]
+  J <-aggregate(J$Freq, by= list(category=J$LSOA), FUN=sum)
+  names(J) <- c("LSOA", "February")
+  c_all <- merge(c_all, J, by.x="LSOA11CD", by.y="LSOA")
+
+  J <- data.frame(table(crime@data[which(crime$month =="2016-03"),]))
+  J$LSOA <- as.character(J$LSOA)
+  J <- J[c("LSOA", "Freq")]
+  J <-aggregate(J$Freq, by= list(category=J$LSOA), FUN=sum)
+  names(J) <- c("LSOA", "March")
+  c_all <- merge(c_all, J, by.x="LSOA11CD", by.y="LSOA")
+  
+  J <- data.frame(table(crime@data[which(crime$month =="2016-04"),]))
+  J$LSOA <- as.character(J$LSOA)
+  J <- J[c("LSOA", "Freq")]
+  J <-aggregate(J$Freq, by= list(category=J$LSOA), FUN=sum)
+  names(J) <- c("LSOA", "April")
+  c_all <- merge(c_all, J, by.x="LSOA11CD", by.y="LSOA")
+  
+  J <- data.frame(table(crime@data[which(crime$month =="2016-05"),]))
+  J$LSOA <- as.character(J$LSOA)
+  J <- J[c("LSOA", "Freq")]
+  J <-aggregate(J$Freq, by= list(category=J$LSOA), FUN=sum)
+  names(J) <- c("LSOA", "May")
+  c_all <- merge(c_all, J, by.x="LSOA11CD", by.y="LSOA")
+  
+  J <- data.frame(table(crime@data[which(crime$month =="2016-06"),]))
+  J$LSOA <- as.character(J$LSOA)
+  J <- J[c("LSOA", "Freq")]
+  J <-aggregate(J$Freq, by= list(category=J$LSOA), FUN=sum)
+  names(J) <- c("LSOA", "June")
+  c_all <- merge(c_all, J, by.x="LSOA11CD", by.y="LSOA")
+  
+  J <- data.frame(table(crime@data[which(crime$month =="2016-07"),]))
+  J$LSOA <- as.character(J$LSOA)
+  J <- J[c("LSOA", "Freq")]
+  J <-aggregate(J$Freq, by= list(category=J$LSOA), FUN=sum)
+  names(J) <- c("LSOA", "July")
+  c_all <- merge(c_all, J, by.x="LSOA11CD", by.y="LSOA")
+  
+  J <- data.frame(table(crime@data[which(crime$month =="2016-08"),]))
+  J$LSOA <- as.character(J$LSOA)
+  J <- J[c("LSOA", "Freq")]
+  J <-aggregate(J$Freq, by= list(category=J$LSOA), FUN=sum)
+  names(J) <- c("LSOA", "August")
+  c_all <- merge(c_all, J, by.x="LSOA11CD", by.y="LSOA")
+  
+  J <- data.frame(table(crime@data[which(crime$month =="2016-09"),]))
+  J$LSOA <- as.character(J$LSOA)
+  J <- J[c("LSOA", "Freq")]
+  J <-aggregate(J$Freq, by= list(category=J$LSOA), FUN=sum)
+  names(J) <- c("LSOA", "September")
+  c_all <- merge(c_all, J, by.x="LSOA11CD", by.y="LSOA")
+  
+  J <- data.frame(table(crime@data[which(crime$month =="2016-10"),]))
+  J$LSOA <- as.character(J$LSOA)
+  J <- J[c("LSOA", "Freq")]
+  J <-aggregate(J$Freq, by= list(category=J$LSOA), FUN=sum)
+  names(J) <- c("LSOA", "October")
+  c_all <- merge(c_all, J, by.x="LSOA11CD", by.y="LSOA")
+  
+  J <- data.frame(table(crime@data[which(crime$month =="2016-11"),]))
+  J$LSOA <- as.character(J$LSOA)
+  J <- J[c("LSOA", "Freq")]
+  J <-aggregate(J$Freq, by= list(category=J$LSOA), FUN=sum)
+  names(J) <- c("LSOA", "November")
+  c_all <- merge(c_all, J, by.x="LSOA11CD", by.y="LSOA")
+  
+  J <- data.frame(table(crime@data[which(crime$month =="2016-12"),]))
+  J$LSOA <- as.character(J$LSOA)
+  J <- J[c("LSOA", "Freq")]
+  J <-aggregate(J$Freq, by= list(category=J$LSOA), FUN=sum)
+  names(J) <- c("LSOA", "December")
+  c_all <- merge(c_all, J, by.x="LSOA11CD", by.y="LSOA")
+  
+## add number of all crimes during year
+K <- data.frame(table(crime@data$LSOA))
+K <- aggregate(K$Freq, by = list(category=K$Var1), FUN=sum)
+names(K) <- c("category", "ALL")
+c_all <- merge(c_all, K, by.x="LSOA11CD", by.y="category")
+
+### writeOGR(c_all, dsn = "D:/api", layer = "c_all", driver="ESRI Shapefile")
+
+# Map of all crimes during year/ choropleth
+
+## function for labs
+lab <- function(df, date=list("2016-01", "2016-02","2016-03", "2016-04", "2016-05", "2016-06", "2016-07", "2016-08", "2016-09", "2016-10", "2016-11", "2016-12")) {
+g <- data.frame(table(crime@data$category == "anti-social-behaviour", crime@data$LSOA, crime@data$month==date, exclude = FALSE))
+gh <- aggregate(Freq~Var2, data=g, sum)
+names(gh) <- c("LSOA", "anti_social_behaviour")
+k <- data.frame(table(crime@data$category == "violent-crime", crime@data$LSOA, crime@data$month==date, exclude = FALSE))
+kh <- aggregate(Freq~Var2, data=k, sum)
+names(kh) <- c("LSOA", "violent_crime")
+l <- data.frame(table(crime@data$category == "burglary", crime@data$LSOA, crime@data$month==date, exclude = FALSE))
+lh <- aggregate(Freq~Var2, data=l, sum)
+names(lh) <- c("LSOA", "burglary")
+o <- data.frame(table(crime@data$category == "drugs", crime@data$LSOA, crime@data$month==date, exclude = FALSE))
+oh <- aggregate(Freq~Var2, data=o, sum)
+names(oh) <- c("LSOA", "drugs")
+p <- data.frame(table(crime@data$category == "possession-of-weapons", crime@data$LSOA, crime@data$month==date, exclude = FALSE))
+ph <- aggregate(Freq~Var2, data=p, sum)
+names(ph) <- c("LSOA", "possession_of_weapons")
+labi <- cbind(gh,kh,lh,oh,ph, by="LSOA", stringAsFactor=FALSE)
+labi <- labi[c(1,2,4,6,8,10)]
+return(labi)
+}
+
+
+labjan <- lab( date=("2016-01"))
+labfeb <- lab( date=("2016-02"))
+labmar <- lab( date=("2016-03"))
+labapr <- lab( date=("2016-04"))
+labmay <- lab( date=("2016-05"))
+labjun <- lab( date=("2016-06"))
+labjul <- lab( date=("2016-07"))
+labaug <- lab( date=("2016-08"))
+labsep <- lab( date=("2016-09"))
+laboct <- lab( date=("2016-10"))
+labnov <- lab( date=("2016-11"))
+labdec <- lab( date=("2016-12"))
+
+##  popouts with labels
+popjan <- sprintf(
+  "<strong>%s</strong><br/>%g antisocial behaviour crimes<br/>%g violent crimes</br>%g burglaries</br>%g drug crimes</br>%g possesion of weapons",
+  "Number of crimes", labjan$anti_social_behaviour, labjan$violent_crime, labjan$burglary, labjan$drugs, labjan$possession_of_weapons
+) %>% lapply(htmltools::HTML)
+
+
+popfeb <- sprintf(
+  "<strong>%s</strong><br/>%g antisocial behaviour crimes<br/>%g violent crimes</br>%g burglaries</br>%g drug crimes</br>%g possesion of weapons",
+  "Number of crimes", labfeb$anti_social_behaviour, labfeb$violent_crime, labfeb$burglary, labfeb$drugs, labfeb$possession_of_weapons
+) %>% lapply(htmltools::HTML)
+
+
+popmar <- sprintf(
+  "<strong>%s</strong><br/>%g antisocial behaviour crimes<br/>%g violent crimes</br>%g burglaries</br>%g drug crimes</br>%g possesion of weapons",
+  "Number of crimes", labmar$anti_social_behaviour, labmar$violent_crime, labmar$burglary, labmar$drugs, labmar$possession_of_weapons
+) %>% lapply(htmltools::HTML)
+
+
+popapr <- sprintf(
+  "<strong>%s</strong><br/>%g antisocial behaviour crimes<br/>%g violent crimes</br>%g burglaries</br>%g drug crimes</br>%g possesion of weapons",
+  "Number of crimes", labapr$anti_social_behaviour, labapr$violent_crime, labapr$burglary, labapr$drugs, labapr$possession_of_weapons
+) %>% lapply(htmltools::HTML)
+
+
+popmay <- sprintf(
+  "<strong>%s</strong><br/>%g antisocial behaviour crimes<br/>%g violent crimes</br>%g burglaries</br>%g drug crimes</br>%g possesion of weapons",
+  "Number of crimes", labmay$anti_social_behaviour, labmay$violent_crime, labmay$burglary, labmay$drugs, labmay$possession_of_weapons
+) %>% lapply(htmltools::HTML)
+
+
+popjun <- sprintf(
+  "<strong>%s</strong><br/>%g antisocial behaviour crimes<br/>%g violent crimes</br>%g burglaries</br>%g drug crimes</br>%g possesion of weapons",
+  "Number of crimes", labjun$anti_social_behaviour, labjun$violent_crime, labjun$burglary, labjun$drugs, labjun$possession_of_weapons
+) %>% lapply(htmltools::HTML)
+
+
+popjul <- sprintf(
+  "<strong>%s</strong><br/>%g antisocial behaviour crimes<br/>%g violent crimes</br>%g burglaries</br>%g drug crimes</br>%g possesion of weapons",
+  "Number of crimes", labjul$anti_social_behaviour, labjul$violent_crime, labjul$burglary, labjul$drugs, labjul$possession_of_weapons
+) %>% lapply(htmltools::HTML)
+
+
+popaug <- sprintf(
+  "<strong>%s</strong><br/>%g antisocial behaviour crimes<br/>%g violent crimes</br>%g burglaries</br>%g drug crimes</br>%g possesion of weapons",
+  "Number of crimes", labaug$anti_social_behaviour, labaug$violent_crime, labaug$burglary, labaug$drugs, labaug$possession_of_weapons
+) %>% lapply(htmltools::HTML)
+
+
+popsep <- sprintf(
+  "<strong>%s</strong><br/>%g antisocial behaviour crimes<br/>%g violent crimes</br>%g burglaries</br>%g drug crimes</br>%g possesion of weapons",
+  "Number of crimes", labsep$anti_social_behaviour, labsep$violent_crime, labsep$burglary, labsep$drugs, labsep$possession_of_weapons
+) %>% lapply(htmltools::HTML)
+
+
+popoct <- sprintf(
+  "<strong>%s</strong><br/>%g antisocial behaviour crimes<br/>%g violent crimes</br>%g burglaries</br>%g drug crimes</br>%g possesion of weapons",
+  "Number of crimes", laboct$anti_social_behaviour, laboct$violent_crime, laboct$burglary, laboct$drugs, laboct$possession_of_weapons
+) %>% lapply(htmltools::HTML)
+
+
+popnov <- sprintf(
+  "<strong>%s</strong><br/>%g antisocial behaviour crimes<br/>%g violent crimes</br>%g burglaries</br>%g drug crimes</br>%g possesion of weapons",
+  "Number of crimes", labnov$anti_social_behaviour, labnov$violent_crime, labnov$burglary, labnov$drugs, labnov$possession_of_weapons
+) %>% lapply(htmltools::HTML)
+
+
+popdec <- sprintf(
+  "<strong>%s</strong><br/>%g antisocial behaviour crimes<br/>%g violent crimes</br>%g burglaries</br>%g drug crimes</br>%g possesion of weapons",
+  "Number of crimes", labdec$anti_social_behaviour, labdec$violent_crime, labdec$burglary, labdec$drugs, labdec$possession_of_weapons
+) %>% lapply(htmltools::HTML)
+
+x <- data.frame(table(crime@data$LSOA))
+
+popall <- sprintf(
+  "<strong>%s</strong><br/>%g",
+  "Sum of crimes", x$Freq
+) %>% lapply(htmltools::HTML)
+
+# Leaflet map
+## C_all t numeric
+c_all@data$January <- as.numeric(c_all@data$January)
+c_all@data$February <- as.numeric(c_all@data$February)
+c_all@data$March <- as.numeric(c_all@data$March)
+c_all@data$April <- as.numeric(c_all@data$April)
+c_all@data$May <- as.numeric(c_all@data$May)
+c_all@data$June <- as.numeric(c_all@data$January)
+c_all@data$Jujy <- as.numeric(c_all@data$Jujy)
+c_all@data$August <- as.numeric(c_all@data$August)
+c_all@data$September <- as.numeric(c_all@data$September)
+c_all@data$October <- as.numeric(c_all@data$October)
+c_all@data$November <- as.numeric(c_all@data$November)
+c_all@data$December <- as.numeric(c_all@data$December)
+c_all@data$ALL <- as.numeric(c_all@data$ALL)
+
+## defining colors
+col <- c('#ffffb2','#fecc5c','#fd8d3c','#f03b20','#bd0026')
+pal1 <- colorQuantile(col, c_all$January, n=5)
+pal2 <- colorQuantile(col, c_all$February, n=5)
+pal3 <- colorQuantile(col, c_all$March, n=5)
+pal4 <- colorQuantile(col, c_all$April, n=5)
+pal5 <- colorQuantile(col, c_all$May, n=5)
+pal6 <- colorQuantile(col, c_all$June, n=5)
+pal7 <- colorQuantile(col, c_all$Jujy, n=5)
+pal8 <- colorQuantile(col, c_all$August, n=5)
+pal9 <- colorQuantile(col, c_all$September, n=5)
+pal10 <- colorQuantile(col, c_all$October, n=5)
+pal11 <- colorQuantile(col, c_all$November, n=5)
+pal12 <- colorQuantile(col, c_all$December, n=5)
+pal13 <- colorQuantile(col, c_all$ALL, n=5)
+
+## Map
+m <- leaflet() %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%  
+  setView(-2.959761, 53.404049, 11)%>%
+ 
+   addPolygons(data=c_all, fillColor = ~pal1(c_all$January), 
+              weight = 0, 
+              opacity = 0.3, 
+              color = "white",
+              dashArray = "0.1",
+              fillOpacity = 0.7,
+              group="January",
+              highlight = highlightOptions( 
+                weight = 0.2,
+                color = "#666",
+                dashArray = "",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+  label = popjan,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto")) %>%
+ 
+   addPolygons(data=c_all, fillColor = ~pal2(c_all$February),
+              weight = 0, 
+              opacity = 0.3, 
+              color = "white",
+              dashArray = "0.1",
+              fillOpacity = 0.7,
+              group="February",
+              highlight = highlightOptions( 
+                weight = 0.2,
+                color = "#666",
+                dashArray = "",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+  label = popfeb,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))%>%
+ 
+   addPolygons(data=c_all, fillColor = ~pal3(c_all$March),
+              weight = 0, 
+              opacity = 0.3, 
+              color = "white",
+              dashArray = "0.1",
+              fillOpacity = 0.7,
+              group="March",
+              highlight = highlightOptions( 
+                weight = 0.2,
+                color = "#666",
+                dashArray = "",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+  label = popmar,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))%>%
+ 
+   addPolygons(data=c_all, fillColor = ~pal4(c_all$April),
+              weight = 0, 
+              opacity = 0.3, 
+              color = "white",
+              dashArray = "0.1",
+              fillOpacity = 0.7,
+              group="April",
+              highlight = highlightOptions( 
+                weight = 0.2,
+                color = "#666",
+                dashArray = "",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+  label = popapr,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))%>%
+ 
+   addPolygons(data=c_all, fillColor = ~pal5(c_all$May),
+              weight = 0, 
+              opacity = 0.3, 
+              color = "white",
+              dashArray = "0.1",
+              fillOpacity = 0.7,
+              group="May",
+              highlight = highlightOptions( 
+                weight = 0.2,
+                color = "#666",
+                dashArray = "",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+  label = popmay,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))%>%
+  
+  addPolygons(data=c_all, fillColor = ~pal6(c_all$June),
+              weight = 0, 
+              opacity = 0.3, 
+              color = "white",
+              dashArray = "0.1",
+              fillOpacity = 0.7,
+              group="June",
+              highlight = highlightOptions( 
+                weight = 0.2,
+                color = "#666",
+                dashArray = "",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+  label = popjun,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))%>%
+ 
+   addPolygons(data=c_all, fillColor = ~pal7(c_all$Jujy),
+              weight = 0, 
+              opacity = 0.3, 
+              color = "white",
+              dashArray = "0.1",
+              fillOpacity = 0.7,
+              group="July",
+              highlight = highlightOptions( 
+                weight = 0.2,
+                color = "#666",
+                dashArray = "",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+  label = popjul,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))%>%
+ 
+   addPolygons(data=c_all, fillColor = ~pal8(c_all$August),
+              weight = 0, 
+              opacity = 0.3, 
+              color = "white",
+              dashArray = "0.1",
+              fillOpacity = 0.7,
+              group="August",
+              highlight = highlightOptions( 
+                weight = 0.2,
+                color = "#666",
+                dashArray = "",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+  label = popaug,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))%>%
+
+    addPolygons(data=c_all, fillColor = ~pal9(c_all$September),
+              weight = 0, 
+              opacity = 0.3, 
+              color = "white",
+              dashArray = "0.1",
+              fillOpacity = 0.7,
+              group="September",
+              highlight = highlightOptions( 
+                weight = 0.2,
+                color = "#666",
+                dashArray = "",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+  label = popsep,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))%>%
+ 
+   addPolygons(data=c_all, fillColor = ~pal10(c_all$October),
+              weight = 0, 
+              opacity = 0.3, 
+              color = "white",
+              dashArray = "0.1",
+              fillOpacity = 0.7,
+              group="October",
+              highlight = highlightOptions( 
+                weight = 0.2,
+                color = "#666",
+                dashArray = "",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+  label = popoct,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))%>%
+ 
+   addPolygons(data=c_all, fillColor = ~pal11(c_all$November),
+              weight = 0, 
+              opacity = 0.3, 
+              color = "white",
+              dashArray = "0.1",
+              fillOpacity = 0.7,
+              group="November",
+              highlight = highlightOptions( 
+                weight = 0.2,
+                color = "#666",
+                dashArray = "",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+  label = popnov,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))%>%
+  
+  addPolygons(data=c_all, fillColor = ~pal12(c_all$December),
+              weight = 0, 
+              opacity = 0.3, 
+              color = "white",
+              dashArray = "0.1",
+              fillOpacity = 0.7,
+              group="December",
+              highlight = highlightOptions( 
+                weight = 0.2,
+                color = "#666",
+                dashArray = "",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+  label = popdec,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))%>%
+ 
+   addPolygons(data=c_all, fillColor = ~pal13(c_all$ALL),
+              weight = 0, 
+              opacity = 0.3, 
+              color = "white",
+              dashArray = "0.1",
+              fillOpacity = 0.7,
+              group="Whole year",
+              highlight = highlightOptions( 
+                weight = 0.2,
+                color = "#666",
+                dashArray = "",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+  label = popall,
+  labelOptions = labelOptions(
+    style = list("font-weight" = "normal", padding = "3px 8px"),
+    textsize = "15px",
+    direction = "auto"))%>%
+  
+  addScaleBar(position = 'bottomright',
+              options = scaleBarOptions(metric = TRUE))%>%
+  
+  addLegend(position = 'bottomleft', pal = pal1, values = c_all$January, title = "Quantiles of crime counts")%>%
+  
+  addFullscreenControl( position = "topleft")%>%
+
+  addLayersControl(
+    baseGroups = c("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December", "Whole year" ),
+    options = layersControlOptions(collapsed = FALSE))
+m
+
+# CartoDB
+
+https://gdsl.carto.com/u/hasova-envs456/builder/f88457ed-c30b-4fb1-a1a8-3b9f551f9a85/embed?state=%7B%22map%22%3A%7B%22ne%22%3A%5B53.312416295607065%2C-3.1929016113281254%5D%2C%22sw%22%3A%5B53.50397589797847%2C-2.80975341796875%5D%2C%22center%22%3A%5B53.40830392510623%2C-3.001327514648438%5D%2C%22zoom%22%3A11%7D%7D
+```
+
