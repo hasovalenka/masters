@@ -11,7 +11,7 @@ fig_caption: yes
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-# instaling packages
+
 ```{r eval=FALSE, echo=FALSE, message=FALSE, warning=FALSE,results = 'hide'}
 install.packages('downloader')
 install.packages('stplanr')
@@ -20,7 +20,6 @@ install.packages('spatialEco')
 install.packages('Metrics')
 ```
 
-# packages
 ```{r echo=FALSE, message=FALSE, warning=FALSE,results = 'hide'}
 library(spatialEco)
 library(sp)
@@ -53,9 +52,9 @@ library(Metrics)
 
 
 
-# **This a documentation of R code used for the dissertation research project for Boots company.**
+## **This a documentation of R code used for the dissertation research project for Boots company. Complete markdown availiable as copy and paste at [github/hasovalenka/masters](https://github.com/hasovalenka/masters/blob/master/Code_dissertation_markdown) **
 
-## It consists of 2 sections
+It consists of 2 sections
 
 1. Data processing  
       + Loading data
@@ -63,8 +62,10 @@ library(Metrics)
 2. Modelling time
       + Modelling all the flows - full description in steps
       + Modeling other selections
+      + Export the estimates from model
+      + Final thoughts
       
-## The models are coded in following order and names, therefore use ctr+f if you want to find a particular section
+**The models are coded in following order and names, therefore use ctr+f if you want to find a particular section**
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 library(knitr)
@@ -77,11 +78,13 @@ kable(selection) %>%
 ```
 
 # Data processing
-## Load the data and make them right coordinates
-####Here a note must be given to preprocessing through ArcGIS.
-####The pharmacy and GP's shapefile
 
-```{r message=FALSE, warning=FALSE}
+## Load the data and assighn projection
+
+Here a note must be given to preprocessing through ArcGIS. Description of the crreated variables and methods used within ArcGIS is availiable as section 3.6.1 and Appendix of the [study](https://github.com/hasovalenka/masters/blob/master/CDRC%20Masters%20Dissertation%20Research%20Project.pdf)
+
+
+```{r message=FALSE, warning=FALSE, error=FALSE, results='hide'}
 # flows
 flbo <- read.csv(file="E:/Dissertation/Boots stuff/full_pharmacy_to_surgery_items.csv", header=TRUE,  stringsAsFactors = FALSE)
 # general practicioners
@@ -93,7 +96,7 @@ mersey <- readOGR(dsn = "E:/Dissertation/geo", layer = "BOUND_MER", stringsAsFac
 # centre
 centre <- readOGR(dsn= "E:/school back up/THG/green", layer = "Liverpool_Central") # Liverpool Central station
 
-# define projection british national grid, in metres
+# define projection british national grid, units in metres
 latlong = "+init=epsg:27700"
 
 # aaply to all shapefiles
@@ -115,10 +118,17 @@ names(gps) <- c( "GP_OBJECTID",   "GP_ODS" ,    "GP_Name" ,   "GP_Street" , "GP_
 A_gps <- gps[c(1:9,12:18,21:29)]
 ```
 
+Next section cleanse the data into a form that it is needed for the modelling.
 
-## Cleaning the flows 
- 
-```{r message=FALSE, warning=FALSE}
+1. The flows need to be aggregated from months into a year and outlined by just one full year 2017, this will allow us to combine the flows with the yearly counts of prescriptions prescribed and dispensed in a year, how we are able to extract from pharmacy and GP data. For any Spatial Interaction model it is necessary to have amount of 'units'(prescribtions) generated at origin, amount of prescribtion generated at destination and amount of prescribtions flowing between Origin and destination.
+
+2. We assured that there are no excessive, missing or missmatched rows, the flows are restricted for Merseyside area and there are just flows that has the whole year (12 months of flows) of sustainable prescription movement.
+
+3. The distance between each origin and destination needs to be calculated.
+
+4. Generated covariates needs to be correctly interpreted and calculated.
+
+```{r message=FALSE, warning=FALSE, error=FALSE}
 # Create a year field
 # extract the year from the date string
 flbo$Year <- str_sub(flbo$Month, 1, str_length(flbo$Month)-2)
@@ -142,14 +152,7 @@ final_full <- counts2[which(counts2$Freq == '12'),]
 # this will ensure there are just the pharmacies and GP's that are also in flow data, all the others will be omitted
 fl2 <- merge(final_full, A_gps@data, all.y = T, by = "GP_ODS")
 flow <- merge(fl2, A_boots@data, all.x = T, by = "Ph_ODS")
-```
 
-
-
-
-### aggregate for summary on 1 line amd create line
-
-```{r message=FALSE, warning=FALSE}
 # cutting the unnecessary columns  in our point data
 A_boots <- A_boots[c(12,1:11,13:39)]
 A_gps <- A_gps[c(2,1,3:25)]
@@ -168,12 +171,8 @@ line <- od2line(flow = ag1, zones = A_gps, destinations = A_boots)
 # calculate lenght of the flow
 # as we used OSGB projection, this is in metres
 line$distance <- lineLength(line, byid = T)
-```
 
 
-### merge back with OD info
-
-```{r message=FALSE, warning=FALSE}
 # add the info of the points to our final data
 agsp <- merge(line, A_gps@data, all.y = T, by = "GP_ODS")
 agsp <- merge(agsp, A_boots@data, all.y = T, by = "Ph_ODS", duplicateGeoms = TRUE)
@@ -191,7 +190,7 @@ GFL$BO_Chng <- as.numeric(GFL$BO_Chng)
 GFL$BO_n_competitors <- as.numeric(GFL$BO_n_competitors)
 GFL$BO_py_boots_comp <- as.numeric(GFL$BO_py_boots_comp)
 
-# calculate fields into a same format, required for traditional model investigating effect of the local population on the flow
+# calculate fields into a same format, required for traditional model investigation, effect of the local population on the flow = creating covariates
 GFL$BO_elder_prop <- (GFL$BO_elders/GFL$BO_night_coun)*100
 GFL$GP_elder_prop <- (GFL$GP_elders/GFL$GP_pop_tot)*100
 GFL$BO_eth_prop <- (GFL$BO_ethnics/GFL$BO_night_coun)*100
@@ -205,28 +204,28 @@ GFL$dist_centre <- spDistsN1(GFL, centre, longlat = TRUE)
 ```
 
 # Modelling time
+
 ## All flows
-### unconstrained
+
+One of the most iportant steps is the order of the data in the data frame. The SIM technique has a comparative character and so all the OD flows are compared to the first one executed, which is the first line in a table.
+
+Here we assume that the best flow is the flow with the most Items on a flow, and so all the others are compared to this one.
+
+Notice that the highest flow between Liverpool Whiston Boots and Aston healthcare practice has 109,227 prescription flow a year, however has distance lenght 2.27 km.
 
 ```{r message=FALSE, warning=FALSE}
 # set ordeof the flows
-# this is one of the most iportant steps, th SIM technique has a comparative character and so all the OD flows are compared to the first one executed, which is the first line in a table
-# here we assume that the best flow is the flow with the most Items on a flow, and so al the others are compared to this one
 GFL <- GFL[order(GFL$Items, decreasing = T),]
-
-# notice that the highest flow between Liverpool Whiston Boots and Aston healthcare practice has 109,227 prescription flow a year, however has distance lenght 2.27 km
-GFL@data["2961",]
-
+head(GFL@data)
 ```
 
 ```{r message=FALSE, warning=FALSE}
+# increase number of rows printed by R studio
+options(max.print=999999)
+
 # 1 - Unconstrained model of all flows
 first <- glm(Items ~ log(GP_Items_PY) + log(BO_I_PY) + distance, na.action = na.exclude, family = poisson(link = "log"), data = GFL)
-summary(first)
-```
 
-
-```{r message=FALSE, warning=FALSE}
 # 2 - Unconstrained model with covariates for all flows
 # running the model with all the catchment variables
 second_before <- glm(Items ~ log(GP_Items_PY) + log(BO_I_PY) + distance + dist_centre + GP_Flag +  GP_Partners + BO_eth_prop + GP_elder_prop + GP_MEAN_imd_score + GP_eth_prop + GP_car_prop + BO_attr + BO_py_boots_comp + GP_pop_tot + BO_NHS_Desc + BO_Format  + BO_py_competitors + BO_day_pop + BO_elder_prop + BO_MEAN_imd_s + BO_car_prop + BO_night_coun
@@ -234,84 +233,28 @@ second_before <- glm(Items ~ log(GP_Items_PY) + log(BO_I_PY) + distance + dist_c
 
 # excluding the variables with high VIF; higly biased variables that does not have a significant effect on interaction
 second <- glm(Items ~ log(GP_Items_PY) + log(BO_I_PY) + distance + dist_centre + GP_Flag +  GP_Partners + GP_pop_tot + GP_eth_prop + BO_day_pop + BO_Format + BO_py_boots_comp + BO_NHS_Desc + BO_py_competitors, na.action = na.exclude, family = poisson(link = "log"), data = GFL)
-summary(second)
-```
-
-```{r message=FALSE, warning=FALSE}
-# investigation of the residuals distribution - fitted vs actual 
-spreadLevelPlot(second_before)
-spreadLevelPlot(second)
-```
 
 
-### production constrained
-
-```{r message=FALSE, warning=FALSE}
  # 3 - Production constrained model for all flows
 third <- glm(Items ~ GP_ODS + log(BO_I_PY) +  distance, na.action = na.exclude, family = poisson(link = "log"), data = GFL)
 
-summary(third)
-```
 
-### attraction constrained
-
-```{r message=FALSE, warning=FALSE}
 # 4 - Attraction constrained model for all flows
 fourth <- glm(Items ~ Ph_ODS +log(GP_Items_PY)  +  distance  
                 , na.action = na.exclude, family = poisson(link = "log"), data = GFL)
-summary(fourth)
-```
 
-### doubly constrained
 
-```{r message=FALSE, warning=FALSE}
-# increase number of rows printed by R studio
-options(max.print=999999)
-```
-
-```{r message=FALSE, warning=FALSE}
 # 5 - Doubly constrained model for all flows
 fifth <- glm(Items ~  GP_ODS + Ph_ODS + distance 
               , na.action = na.exclude, family = poisson(link = "log"), data = GFL)
-summary(fifth)
-```
+head(summary(fifth))
 
-### random effect
-
-```{r message=FALSE, warning=FALSE}
 # 6 - Random effect included in unconstrained model for all flows - mixed effect model
-random <- glmer(Items ~ GP_ODS + log(BO_I_PY) +  distance + (1|dist_centre) ,  family = poisson(link = "log"), data = GFL@data)
-```
-
-### try matrix
-```{r message=FALSE, warning=FALSE}
-GFL$fourthFitted <- round(fitted(fourth),0)
-mat6 <- dcast(GFL@data, GP_ODS ~ Ph_ODS, sum, value.var = "fourthFitted", margins=c("GP_ODS", "Ph_ODS"))
-mat6
-```
-
-```{r message=FALSE, warning=FALSE}
-cdatasubmat6 <- dcast(GFL@data, GP_ODS ~ Ph_ODS, sum, value.var = "Items", margins=c("GP_ODS", "Ph_ODS"))
-cdatasubmat6
-```
-
-```{r message=FALSE, warning=FALSE}
-brk1 = classIntervals(GFL$Items, n = 5, style = "kmeans")
-brk2 = classIntervals(GFL$fourthFitted, n = 5, style = "kmeans")
-
-grid.arrange(
-  spplot(GFL, "Items", col = "transparent", sp.layout = mers.back ,
-       main = list(label=" "), col.regions = my, 
-    at = brk1$brks, par.settings = list(axis.line = list(col = 'transparent'))), 
-  
-  spplot(GFL, "fourthFitted", col = "transparent", sp.layout = mers.back ,
-       main = list(label="Predicted items"), col.regions = my, 
-    at = brk2$brks, par.settings = list(axis.line = list(col = 'transparent'))),ncol=2)
-
+# random <- glmer(Items ~ GP_ODS + log(BO_I_PY) +  distance + (1|dist_centre) ,  family = poisson(link = "log"), data = GFL@data)
 ```
 
 
-### validation 
+### Validation of the models
 
 ```{r message=FALSE, warning=FALSE}
 # create table with R2 of each model
@@ -347,7 +290,45 @@ rmses <- data.frame(model=c( 'first', 'second', 'third','fourth', 'fifth'),
 rmses
 ```
 
-### predictive check
+### Model diagnostics
+
+```{r message=FALSE, warning=FALSE}
+# create plots with model examination - cooks distance, residuals distribution, outliers, etc.
+
+# first
+print(
+par(mfrow=c(2,2)),
+plot(first)
+)
+
+
+# second
+print(
+par(mfrow=c(2,2)),
+plot(second)
+)
+
+# third
+print(
+par(mfrow=c(2,2)),
+plot(third)
+)
+
+# fourth
+
+print(
+par(mfrow=c(2,2)),
+plot(fourth)
+)
+
+# fifth
+print(
+par(mfrow=c(2,2)),
+plot(fifth)
+)
+```
+
+### Predictive check
 
 ```{r message=FALSE, warning=FALSE}
 # create a function that generate actual distribution and posterior distribution along with sample distributions, to check the prediction uncertainty
@@ -370,9 +351,8 @@ generate_draw_poi <- function(m){
 ```
 
 ```{r message=FALSE, warning=FALSE}
-# Call plots with density lines and directky export them
+# Call plots with density lines
 # predictive check for model 1 - unconstrained for all flows
-png(filename="E:/Dissertation/graphs/all flows/PP_first.png", width = 800, height = 500, units = "px")
 plot(density(first$fitted.values), 
      xlim=c(-100, 5000),
      ylim=c(0, max(c(
@@ -402,10 +382,9 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Set 1: All flows - Simple unconstrained")
-dev.off()
+
 
 # predictive check for model 2 - unconstrained with covariates for all flows
-png(filename="E:/Dissertation/graphs/all flows/PP_second.png", width = 800, height = 500, units = "px")
 plot(density(second$fitted.values), 
      xlim=c(-100, 5000),
      ylim=c(0, max(c(
@@ -435,10 +414,9 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Set 1: All flows - Unconstrained with covariates")
-dev.off()
+
 
 # predictive check for model 3 - production constrained for all flows
-png(filename="E:/Dissertation/graphs/all flows/PP_third.png", width = 800, height = 500, units = "px")
 plot(density(third$fitted.values), 
      xlim=c(-100, 5000),
      ylim=c(0, max(c(
@@ -468,10 +446,9 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Set 1: All flows - Production constrained")
-dev.off()
+
 
 # predictive check for model 4 - attraction constrained for all flows
-png(filename="E:/Dissertation/graphs/all flows/PP_fourth.png", width = 800, height = 500, units = "px")
 plot(density(fourth$fitted.values), 
      xlim=c(-100, 5000),
      ylim=c(0, max(c(
@@ -501,10 +478,9 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Set 1: All flows - Attraction constrained")
-dev.off()
+
 
 # predictive check for model 5 - doubly constrained for all flows
-png(filename="E:/Dissertation/graphs/all flows/PP_fifth.png", width = 800, height = 500, units = "px")
 plot(density(fifth$fitted.values), 
      xlim=c(-100, 5000),
      ylim=c(0, max(c(
@@ -534,57 +510,24 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Set 1: All flows - Doubly constrained")
-dev.off()
+
 
 ```
  
-### variability
+### Building matrix for understanding flows
+```{r message=FALSE, warning=FALSE}
+# matrix using all flow data
+cdatasubmat6 <- dcast(GFL@data, GP_ODS ~ Ph_ODS, sum, value.var = "Items", margins=c("GP_ODS", "Ph_ODS"))
+head(cdatasubmat6)
+```
 
 ```{r message=FALSE, warning=FALSE}
-# create plots with model examination - cooks distance, residuals distribution, outliers, etc.
-# direct export to a file
-
-# first
-png(filename="E:/Dissertation/graphs/all flows/first.png", width = 800, height = 500, units = "px")
-print(
-par(mfrow=c(2,2)),
-plot(first)
-)
-dev.off()
-
-# second
-png(filename="E:/Dissertation/graphs/all flows/second.png", width = 800, height = 500, units = "px")
-print(
-par(mfrow=c(2,2)),
-plot(second)
-)
-dev.off()
-
-# third
-png(filename="E:/Dissertation/graphs/all flows/third.png", width = 800, height = 500, units = "px")
-print(
-par(mfrow=c(2,2)),
-plot(third)
-)
-dev.off()
-
-# fourth
-png(filename="E:/Dissertation/graphs/all flows/fourth.png", width = 800, height = 500, units = "px")
-print(
-par(mfrow=c(2,2)),
-plot(fourth)
-)
-dev.off()
-
-# fifth
-png(filename="E:/Dissertation/graphs/all flows/fifth.png", width = 800, height = 500, units = "px")
-print(
-par(mfrow=c(2,2)),
-plot(fifth)
-)
-dev.off()
-
+# matrix that uses double constrained model of all flows
+GFL$fifthFitted <- round(fitted(fifth),0)
+mat6 <- dcast(GFL@data, GP_ODS ~ Ph_ODS, sum, value.var = "fifthFitted", margins=c("GP_ODS", "Ph_ODS"))
+head(mat6)
 ```
+
 
 ## Modelling the highest flows
 
@@ -616,7 +559,7 @@ selfifth <- glm(Items ~  GP_ODS + Ph_ODS + distance
               , na.action = na.exclude, family = poisson(link = "log"), data = GFH)
 
 # 12 - Mixed effect model
-selrandom <- glmer(Items ~ GP_ODS + log(BO_I_PY) +  distance + (1|dist_centre) ,  family = poisson(link = "log"), data = GFH@data)
+# selrandom <- glmer(Items ~ GP_ODS + log(BO_I_PY) +  distance + (1|dist_centre) ,  family = poisson(link = "log"), data = GFH@data)
 ```
 
 ```{r message=FALSE, warning=FALSE}
@@ -629,7 +572,7 @@ r2s <- data.frame(model=c( 'selfirst', 'selsecond', 'selthird','selfourth', 'sel
                              R2logit(Items, selfourth),
                              R2logit(Items, selfifth)))
 r2s
-AIC(selfirst, selsecond, selthird, selfourth, selfifth, selrandom, seldourandom)
+AIC(selfirst, selsecond, selthird, selfourth, selfifth)
 
 rmses <- data.frame(model=c( 'selfirst', 'selsecond', 'selthird','selfourth', 'selfifth'),
                       RMSE=c(
@@ -648,51 +591,45 @@ rmses
 # Model diagnostics
 
 # 7 - Unconstrained model
-png(filename="E:/Dissertation/graphs/500 highest/selfirst.png", width = 800, height = 500, units = "px")
 print(
 par(mfrow=c(2,2)),
 plot(selfirst)
 )
-dev.off()
+
 
 # 8 - Unconstrained model with covariates
-png(filename="E:/Dissertation/graphs/500 highest/selsecond.png", width = 800, height = 500, units = "px")
 print(
 par(mfrow=c(2,2)),
 plot(selsecond)
 )
-dev.off()
+
 
 # 9 - Production constrained model 
-png(filename="E:/Dissertation/graphs/500 highest/selthird.png", width = 800, height = 500, units = "px")
 print(
 par(mfrow=c(2,2)),
 plot(selthird)
 )
-dev.off()
+
 
 # 10 - Attraction constrained model
-png(filename="E:/Dissertation/graphs/500 highest/selfourth.png", width = 800, height = 500, units = "px")
 print(
 par(mfrow=c(2,2)),
 plot(selfourth)
 )
-dev.off()
+
 
 # 11 - Doubly constrained model
-png(filename="E:/Dissertation/graphs/500 highest/selfifth.png", width = 800, height = 500, units = "px")
 print(
 par(mfrow=c(2,2)),
 plot(selfifth)
 )
-dev.off()
+
 ```
 
 ```{r message=FALSE, warning=FALSE}
 # predictive check
 
 # 7 - Unconstrained model
-png(filename="E:/Dissertation/graphs/500 highest/high_first.png", width = 800, height = 500, units = "px")
 plot(density(selfirst$fitted.values), 
      xlim=c(-100, 20000),
      ylim=c(0, max(c(
@@ -722,10 +659,9 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Simple unconstrained - 500 highest flows")
-dev.off()
+
 
 # 8 - Unconstrained model with covariates
-png(filename="E:/Dissertation/graphs/500 highest/high_second.png", width = 800, height = 500, units = "px")
 plot(density(selsecond$fitted.values), 
      xlim=c(-100, 20000),
      ylim=c(0, max(c(
@@ -755,10 +691,9 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Unconstrained with covariates - 500 highest flows")
-dev.off()
+
 
 # 9 - Production constrained model 
-png(filename="E:/Dissertation/graphs/500 highest/high_third.png", width = 800, height = 500, units = "px")
 plot(density(selthird$fitted.values), 
      xlim=c(-100, 20000),
      ylim=c(0, max(c(
@@ -788,10 +723,9 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Production constrained - 500 highest flows")
-dev.off()
+
 
 # 10 - Attraction constrained model
-png(filename="E:/Dissertation/graphs/500 highest/high_fourth.png", width = 800, height = 500, units = "px")
 plot(density(selfourth$fitted.values), 
      xlim=c(-100, 20000),
      ylim=c(0, max(c(
@@ -821,10 +755,9 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Attraction constrained - 500 highest flows")
-dev.off()
+
 
 # 11 - Doubly constrained model
-png(filename="E:/Dissertation/graphs/500 highest/high_fifth.png", width = 800, height = 500, units = "px")
 plot(density(selfifth$fitted.values), 
      xlim=c(-100, 20000),
      ylim=c(0, max(c(
@@ -855,7 +788,7 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Doubly constrained - 500 highest flows")
-dev.off()
+
 
 ```
 
@@ -888,7 +821,7 @@ intfifth <- glm(Items ~  GP_ODS + Ph_ODS + distance
               , na.action = na.exclude, family = poisson(link = "log"), data = GFI)
 
 # 18 - Mixed effect model
-intrandom <- glmer(Items ~ GP_ODS + log(BO_I_PY) +  distance + (1|dist_centre) ,  family = poisson(link = "log"), data = GFI@data)
+# intrandom <- glmer(Items ~ GP_ODS + log(BO_I_PY) +  distance + (1|dist_centre) ,  family = poisson(link = "log"), data = GFI@data)
 ```
 
 ```{r message=FALSE, warning=FALSE}
@@ -902,7 +835,7 @@ r2s <- data.frame(model=c( 'intfirst', 'intsecond', 'intthird','intfourth', 'int
                              R2logit(Items, intfifth)))
 r2s
 
-AIC(intfirst, intsecond, intthird, intfourth, intfifth, intrandom, intdourandom)
+AIC(intfirst, intsecond, intthird, intfourth, intfifth)
 
 rmses <- data.frame(model=c( 'intfirst', 'intsecond', 'intthird','intfourth', 'intfifth'),
                       RMSE=c(
@@ -920,50 +853,44 @@ rmses
 ```{r message=FALSE, warning=FALSE}
 # model diagnostics
 # 13 - Unconstrained model
-png(filename="E:/Dissertation/graphs/catchment/intfirst.png", width = 800, height = 500, units = "px")
 print(
 par(mfrow=c(2,2)),
 plot(intfirst)
 )
-dev.off()
+
 
 # 14 - Unconstrained model with covariates
-png(filename="E:/Dissertation/graphs/catchment/intsecond.png", width = 800, height = 500, units = "px")
 print(
 par(mfrow=c(2,2)),
 plot(intsecond)
 )
-dev.off()
+
 
 # 15 - Production constrained model 
-png(filename="E:/Dissertation/graphs/catchment/intthird.png", width = 800, height = 500, units = "px")
 print(
 par(mfrow=c(2,2)),
 plot(intthird)
 )
-dev.off()
+
 
 # 16 - Attraction constrained model
-png(filename="E:/Dissertation/graphs/catchment/intfourth.png", width = 800, height = 500, units = "px")
 print(
 par(mfrow=c(2,2)),
 plot(intfourth)
 )
-dev.off()
+
 
 # 17 - Doubly constrained model
-png(filename="E:/Dissertation/graphs/catchment/intfifth.png", width = 800, height = 500, units = "px")
 print(
 par(mfrow=c(2,2)),
 plot(intfifth)
 )
-dev.off()
+
 ```
 
 ```{r message=FALSE, warning=FALSE}
 # Predictive check
 # 13 - Unconstrained model
-png(filename="E:/Dissertation/graphs/catchment/inter_first.png", width = 800, height = 500, units = "px")
 plot(density(intfirst$fitted.values), 
      xlim=c(-100, 100000),
      ylim=c(0, max(c(
@@ -993,10 +920,9 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Simple unconstrained - Interregional flows (800m)")
-dev.off()
+
 
 # 14 - Unconstrained model with covariates
-png(filename="E:/Dissertation/graphs/catchment/inter_second.png", width = 800, height = 500, units = "px")
 plot(density(intsecond$fitted.values), 
      xlim=c(-100, 100000),
      ylim=c(0, max(c(
@@ -1027,10 +953,9 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Unconstrained with covariates - Interregional flows (800m)")
-dev.off()
+
 
 # 15 - Production constrained model 
-png(filename="E:/Dissertation/graphs/catchment/inter_third.png", width = 800, height = 500, units = "px")
 plot(density(intthird$fitted.values), 
      xlim=c(-100, 100000),
      ylim=c(0, max(c(
@@ -1060,10 +985,9 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Production constrained - Interregional flows (800m)")
-dev.off()
+
 
 # 16 - Attraction constrained model
-png(filename="E:/Dissertation/graphs/catchment/inter_fourth.png", width = 800, height = 500, units = "px")
 plot(density(intfourth$fitted.values), 
      xlim=c(-100, 100000),
      ylim=c(0, max(c(
@@ -1093,10 +1017,9 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Attraction constrained - Interregional flows (800m)")
-dev.off()
+
 
 # 17 - Doubly constrained model
-png(filename="E:/Dissertation/graphs/catchment/inter_fifth.png", width = 800, height = 500, units = "px")
 plot(density(intfifth$fitted.values), 
      xlim=c(-100, 100000),
      ylim=c(0, max(c(
@@ -1126,7 +1049,7 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Doubly constrained - Interregional flows (800m)")
-dev.off()
+
 
 ```
 
@@ -1160,8 +1083,7 @@ minfifth <- glm(Items ~  GP_ODS + Ph_ODS + distance
               , na.action = na.exclude, family = poisson(link = "log"), data = GFM)
 
 # 24 - Mixed effect model
-minrandom <- glmer(Items ~ GP_ODS + log(BO_I_PY) +  distance + (1|dist_centre) ,  family = poisson(link = "log"), data = GFM@data)
-summary(minfifth)
+# minrandom <- glmer(Items ~ GP_ODS + log(BO_I_PY) +  distance + (1|dist_centre) ,  family = poisson(link = "log"), data = GFM@data)
 ```
 
 ```{r message=FALSE, warning=FALSE}
@@ -1193,51 +1115,45 @@ rmses
 ```{r message=FALSE, warning=FALSE}
 # model diagnostics
 # 19 - Unconstrained model
-png(filename="E:/Dissertation/graphs/without 100/minfirst.png", width = 800, height = 500, units = "px")
 print(
 par(mfrow=c(2,2)),
 plot(minfirst)
 )
-dev.off()
+
 
 # 20 - Unconstrained model with covariates
-png(filename="E:/Dissertation/graphs/without 100/minsecond.png", width = 800, height = 500, units = "px")
 print(
 par(mfrow=c(2,2)),
 plot(minsecond)
 )
-dev.off()
+
 
 
 # 21 - Production constrained model 
-png(filename="E:/Dissertation/graphs/without 100/minthird.png", width = 800, height = 500, units = "px")
 print(
 par(mfrow=c(2,2)),
 plot(minthird)
 )
-dev.off()
+
 
 # 22 - Attraction constrained model
-png(filename="E:/Dissertation/graphs/without 100/minfourth.png", width = 800, height = 500, units = "px")
 print(
 par(mfrow=c(2,2)),
 plot(minfourth)
 )
-dev.off()
+
 
 # 23 - Doubly constrained model
-png(filename="E:/Dissertation/graphs/without 100/minfifth.png", width = 800, height = 500, units = "px")
 print(
 par(mfrow=c(2,2)),
 plot(minfifth)
 )
-dev.off()
+
 ```
 
 ```{r message=FALSE, warning=FALSE}
 # Predictive plot
 # 19 - Unconstrained model
-png(filename="E:/Dissertation/graphs/without 100/no100_first.png", width = 800, height = 500, units = "px")
 plot(density(minfirst$fitted.values), 
      xlim=c(-100, 20000),
      ylim=c(0, max(c(
@@ -1267,10 +1183,9 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Simple unconstrained - without flows below 100")
-dev.off()
+
 
 # 20 - Unconstrained model with covariates
-png(filename="E:/Dissertation/graphs/without 100/no100_second.png", width = 800, height = 500, units = "px")
 plot(density(minsecond$fitted.values), 
      xlim=c(-100, 20000),
      ylim=c(0, max(c(
@@ -1300,10 +1215,9 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Unconstrained with covariates - without flows below 100")
-dev.off()
+
 
 # 21 - Production constrained model 
-png(filename="E:/Dissertation/graphs/without 100/no100_third.png", width = 800, height = 500, units = "px")
 plot(density(minthird$fitted.values), 
      xlim=c(-100, 20000),
      ylim=c(0, max(c(
@@ -1333,10 +1247,9 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Production constrained - without flows below 100")
-dev.off()
+
 
 # 22 - Attraction constrained model
-png(filename="E:/Dissertation/graphs/without 100/no100_fourth.png", width = 800, height = 500, units = "px")
 plot(density(minfourth$fitted.values), 
      xlim=c(-100, 20000),
      ylim=c(0, max(c(
@@ -1366,10 +1279,9 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Attraction constrained - without flows below 100")
-dev.off()
+
 
 # 23 - Doubly constrained model
-png(filename="E:/Dissertation/graphs/without 100/no100_fifth.png", width = 800, height = 500, units = "px")
 plot(density(minfifth$fitted.values), 
      xlim=c(-100, 20000),
      ylim=c(0, max(c(
@@ -1399,14 +1311,13 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Doubly constrained - without flows below 100")
-dev.off(
 ```
 
 ## Modelling flows above the mean Item from  all flows
 
 ```{r message=FALSE, warning=FALSE}
 # generate mean flow
-Meanflow <- mean(flow$Items)
+Meanflow <- mean(GFL$Items)
 # selest flows above 771 Items
 GFX <- GFL[which(GFL$Items > Meanflow), ]
 ```
@@ -1432,7 +1343,7 @@ maxfifth <- glm(Items ~  GP_ODS + Ph_ODS + distance
               , na.action = na.exclude, family = poisson(link = "log"), data = GFX)
 
 # 30 - Mixed effect model
-maxrandom <- glmer(Items ~ GP_ODS + log(BO_I_PY) +  distance + (1|dist_centre) ,  family = poisson(link = "log"), data = GFX@data)
+# maxrandom <- glmer(Items ~ GP_ODS + log(BO_I_PY) +  distance + (1|dist_centre) ,  family = poisson(link = "log"), data = GFX@data)
 ```
 
 ```{r message=FALSE, warning=FALSE}
@@ -1464,50 +1375,44 @@ rmses
 ```{r message=FALSE, warning=FALSE}
 # model diagnostics
 # 25 - Unconstrained model
-png(filename="E:/Dissertation/graphs/from max/maxfirst.png", width = 800, height = 500, units = "px")
 print(
 par(mfrow=c(2,2)),
 plot(maxfirst)
 )
-dev.off()
+
 
 # 26 - Unconstrained model with covariates
-png(filename="E:/Dissertation/graphs/from max/maxsecond.png", width = 800, height = 500, units = "px")
 print(
 par(mfrow=c(2,2)),
 plot(maxsecond)
 )
-dev.off()
+
 
 # 27 - Production constrained model 
-png(filename="E:/Dissertation/graphs/from max/maxthird.png", width = 800, height = 500, units = "px")
 print(
 par(mfrow=c(2,2)),
 plot(maxthird)
 )
-dev.off()
+
 
 # 28 - Attraction constrained model
-png(filename="E:/Dissertation/graphs/from max/maxfourth.png", width = 800, height = 500, units = "px")
 print(
 par(mfrow=c(2,2)),
 plot(maxfourth)
 )
-dev.off()
+
 
 # 29 - Doubly constrained model
-png(filename="E:/Dissertation/graphs/from max/maxfifth.png", width = 800, height = 500, units = "px")
 print(
 par(mfrow=c(2,2)),
 plot(maxfifth)
 )
-dev.off()
+
 ```
 
 ```{r message=FALSE, warning=FALSE}
 # predictive check
 # 25 - Unconstrained model
-png(filename="E:/Dissertation/graphs/from max/max_first.png", width = 800, height = 500, units = "px")
 plot(density(maxfirst$fitted.values), 
      xlim=c(-100, 20000),
      ylim=c(0, max(c(
@@ -1537,10 +1442,9 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Simple unconstrained - without flows below the mean (771)")
-dev.off()
+
 
 # 26 - Unconstrained model with covariates
-png(filename="E:/Dissertation/graphs/from max/max_second.png", width = 800, height = 500, units = "px")
 plot(density(maxsecond$fitted.values), 
      xlim=c(-100, 20000),
      ylim=c(0, max(c(
@@ -1570,10 +1474,9 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Unconstrained with covariates - without flows below the mean (771)")
-dev.off()
+
 
 # 27 - Production constrained model 
-png(filename="E:/Dissertation/graphs/from max/max_third.png", width = 800, height = 500, units = "px")
 plot(density(maxthird$fitted.values), 
      xlim=c(-100, 20000),
      ylim=c(0, max(c(
@@ -1603,10 +1506,9 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Production constrained - without flows below the mean (771)")
-dev.off()
+
 
 # 28 - Attraction constrained model
-png(filename="E:/Dissertation/graphs/from max/max_fourth.png", width = 800, height = 500, units = "px")
 plot(density(maxfourth$fitted.values), 
      xlim=c(-100, 20000),
      ylim=c(0, max(c(
@@ -1636,10 +1538,9 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Attraction constrained - without flows below the mean (771)")
-dev.off()
+
 
 # 29 - Doubly constrained model
-png(filename="E:/Dissertation/graphs/from max/max_fifth.png", width = 800, height = 500, units = "px")
 plot(density(maxfifth$fitted.values), 
      xlim=c(-100, 20000),
      ylim=c(0, max(c(
@@ -1669,7 +1570,7 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Doubly constrained - without flows below the mean (771)")
-dev.off()
+
 ```
 
 ## Modelling flows within walking distance 1600m
@@ -1726,50 +1627,44 @@ rmses
 ```{r message=FALSE, warning=FALSE}
 # model diagnostics
 # 31 - Unconstrained model
-png(filename="E:/Dissertation/graphs/from walk/walkfirst.png", width = 800, height = 500, units = "px")
 print(
 par(mfrow=c(2,2)),
 plot(walkfirst)
 )
-dev.off()
+
 
 # 32 - Unconstrained model with covariates
-png(filename="E:/Dissertation/graphs/from walk/walksecond.png", width = 800, height = 500, units = "px")
 print(
 par(mfrow=c(2,2)),
 plot(walksecond)
 )
-dev.off()
+
 
 # 33 - Production constrained model 
-png(filename="E:/Dissertation/graphs/from walk/walkthird.png", width = 800, height = 500, units = "px")
 print(
 par(mfrow=c(2,2)),
 plot(walkthird)
 )
-dev.off()
+
 
 # 34 - Attraction constrained model
-png(filename="E:/Dissertation/graphs/from walk/walkfourth.png", width = 800, height = 500, units = "px")
 print(
 par(mfrow=c(2,2)),
 plot(walkfourth)
 )
-dev.off()
+
 
 # 35 - Doubly constrained model
-png(filename="E:/Dissertation/graphs/from walk/walkfifth.png", width = 800, height = 500, units = "px")
 print(
 par(mfrow=c(2,2)),
 plot(walkfifth)
 )
-dev.off()
+
 ```
 
 ```{r message=FALSE, warning=FALSE}
 # predictive check
 # 31 - Unconstrained model
-png(filename="E:/Dissertation/graphs/from walk/walk_first.png", width = 800, height = 500, units = "px")
 plot(density(walkfirst$fitted.values), 
      xlim=c(-100, 20000),
      ylim=c(0, max(c(
@@ -1799,10 +1694,9 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Simple unconstrained - Interregional flows (1600m)")
-dev.off()
+
 
 # 32 - Unconstrained model with covariates
-png(filename="E:/Dissertation/graphs/from walk/walk_second.png", width = 800, height = 500, units = "px")
 plot(density(walksecond$fitted.values), 
      xlim=c(-100, 20000),
      ylim=c(0, max(c(
@@ -1832,10 +1726,9 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Unconstrained with covariates - Interregional flows (1600m)")
-dev.off()
+
 
 # 33 - Production constrained model 
-png(filename="E:/Dissertation/graphs/from walk/walk_third.png", width = 800, height = 500, units = "px")
 plot(density(walkthird$fitted.values), 
      xlim=c(-100, 20000),
      ylim=c(0, max(c(
@@ -1865,10 +1758,9 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Production constrained - Interregional flows (1600m)")
-dev.off()
+
 
 # 34 - Attraction constrained model
-png(filename="E:/Dissertation/graphs/from walk/walk_fourth.png", width = 800, height = 500, units = "px")
 plot(density(walkfourth$fitted.values), 
      xlim=c(-100, 20000),
      ylim=c(0, max(c(
@@ -1898,10 +1790,9 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Attraction constrained - Interregional flows (1600m)")
-dev.off()
+
 
 # 35 - Doubly constrained model
-png(filename="E:/Dissertation/graphs/from walk/walk_fifth.png", width = 800, height = 500, units = "px")
 plot(density(walkfifth$fitted.values), 
      xlim=c(-100, 20000),
      ylim=c(0, max(c(
@@ -1931,5 +1822,43 @@ legend('topright',
        col=c('black', 'red', 'green'),
        lwd=1)
 title(main="Predictive check - Doubly constrained - Interregional flows (1600m)")
-dev.off()
+
 ```
+
+# Export the estimates from model
+
+Here is example of how the extract the coefficient estimates from the model, link them to our GP and pharmacy point data and export like a shapefile. 
+
+The coefficient could be easily visualized in R, Python or other platform such as QGis, depends on personal preferences.
+
+```{r}
+# save the coefs to a dataframe
+coefs800 <- data.frame(coef(summary(intthird)))
+coefs800GP <- coefs800[2:108,]
+coefs800PH <- coefs800[109:123,]
+
+# extract ODS code
+coefs800GP$ID <- rownames(coefs800GP)
+coefs800PH$ID <- rownames(coefs800PH)
+
+coefs800GP$GP_ODS <- as.character(substring(coefs800GP$ID, 7))
+coefs800PH$Ph_ODS <- as.character(substring(coefs800PH$ID, 7))
+
+#merge with 
+cutgp8 <- merge(A_gps, coefs800GP, by='GP_ODS', all.y=T)
+cutph8 <- merge(A_boots, coefs800PH, by='Ph_ODS', all.y=T)
+
+#export
+writeOGR(obj=cutgp8, dsn="E:/Dissertation/arc/x", layer="800fifth_GP", driver="ESRI Shapefile")
+writeOGR(obj=cutph8, dsn="E:/Dissertation/arc/x", layer="800fifth_PH", driver="ESRI Shapefile") 
+```
+
+# Final thoughts
+
+Constrained spatial interaction models are significantly more efficient then any gravity models or traditional catchment profile regressions. The approach allows us to find a deficiency in the spatial interaction between the GP's and pharmacies, however, this is very much dependent on two asumptions applied in the modelling process. 
+
+1. It is important to order the data according to what's the purpose of the modeling. The model assumes that the first row of the data is 'the best' or 'ideal' flow that the others are compared with, therefor our model assumes that the best performing flow has the most prescribtions but its lenght is more than 2 km. Changing this assumption and placing a flow with less prescribtions but lenght of less than 2 meters, significantly chnage the result. Although this might seem to be a better for the purposes of the analysis, such a manipulation usually leads to misinterpretation and model's overfitting. 
+
+2. The model does not account for any general difference between different types of pharmacies or GP's that have generaly different character such as pharmacy sizes or GP size. For example General Practice with only one GP will obviously going to have naturally lower performance than practice with 8 practicioners. Accordingly, Boots pharmacy defined as High street pharmacy will have naturally different character of the flows than retail park pharmacy or local pharmacy. Runnig model selecting just flows within the classification and comparing the result to result from modelling all pharmacies could reval hidden pattern of flow efficiency.
+
+For any questions or inquires, contact me on haska.lenka@gmail.com 
